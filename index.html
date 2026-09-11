@@ -158,6 +158,15 @@
     background:var(--bg);
     color:var(--fg);
   }
+  .field input[type="date"], .field input[type="text"]{
+    width:100%;
+    font-family:inherit;
+    font-size:14px;
+    border:1px solid var(--border);
+    padding:8px;
+    background:var(--bg);
+    color:var(--fg);
+  }
   .form-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:10px; }
 
   /* ENTRIES LIST */
@@ -274,6 +283,16 @@
             <option value="Gemini">Gemini</option>
             <option value="ręcznie">ręcznie</option>
           </select>
+        </div>
+
+        <div class="field">
+          <label>Data pracy</label>
+          <input type="date" id="f-data">
+        </div>
+
+        <div class="field">
+          <label>Czas pracy — ręcznie (opcjonalnie, nadpisuje stoper)</label>
+          <input type="text" id="f-czas-reczny" placeholder="np. 01:30:00">
         </div>
 
         <div class="field">
@@ -630,6 +649,35 @@ function formatTime(totalSeconds){
   return `${h}:${m}:${s}`;
 }
 
+// ---------------------------------------------------------------
+// POMOCNICZE: DATA I RĘCZNY CZAS PRACY (wpisy historyczne)
+// ---------------------------------------------------------------
+function formatDateForInput(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function todayForInput(){
+  return formatDateForInput(new Date());
+}
+
+// Łączy wybraną datę (YYYY-MM-DD) z godziną/minutą/sekundą wzorca (domyślnie teraz)
+function combineDateAndTimeOfDay(dateStr, timeSource){
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const t = timeSource || new Date();
+  return new Date(y, m - 1, d, t.getHours(), t.getMinutes(), t.getSeconds());
+}
+
+// Parsuje ręcznie wpisany czas "GG:MM:SS" na sekundy. Zwraca null jeśli format zły.
+function parseManualTime(str){
+  const m = str.trim().match(/^(\d{1,3}):([0-5]?\d):([0-5]?\d)$/);
+  if (!m) return null;
+  const h = parseInt(m[1], 10), mi = parseInt(m[2], 10), s = parseInt(m[3], 10);
+  return h * 3600 + mi * 60 + s;
+}
+
 function updateTimerDisplay(){
   timerDisplayEl.textContent = formatTime(timerSeconds);
 }
@@ -674,6 +722,8 @@ function clearForm(){
   ["f-cel","f-dzialania","f-problemy","f-decyzje","f-uzasadnienie","f-nauka","f-nastepny-krok","f-raw-paste"]
     .forEach(id => el(id).value = "");
   el("f-source").value = "Claude";
+  el("f-data").value = todayForInput();
+  el("f-czas-reczny").value = "";
   editingEntryId = null;
   el("entry-form-title").textContent = "Nowy wpis";
   el("save-entry-btn").textContent = "Zapisz wpis";
@@ -750,18 +800,51 @@ el("save-entry-btn").addEventListener("click", async () => {
     return;
   }
 
+  // ręcznie wpisany czas pracy (opcjonalny) — jeśli podany, musi być poprawnym formatem
+  const manualTimeStr = el("f-czas-reczny").value.trim();
+  let manualSeconds = null;
+  if (manualTimeStr){
+    manualSeconds = parseManualTime(manualTimeStr);
+    if (manualSeconds === null){
+      alert("Nieprawidłowy format czasu — użyj GG:MM:SS, np. 01:30:00.");
+      return;
+    }
+  }
+
+  const selectedDateStr = el("f-data").value || todayForInput();
+
   btn.disabled = true;
   try {
     if (editingEntryId){
-      // aktualizacja istniejącego wpisu — data i czas pracy zostają jak w oryginale
+      const originalEntry = entries.find(e => e.id === editingEntryId);
+      const originalDate = (originalEntry && originalEntry.utworzono && originalEntry.utworzono.toDate)
+        ? originalEntry.utworzono.toDate()
+        : new Date();
+      const czasPracySekundy = manualSeconds !== null
+        ? manualSeconds
+        : (originalEntry ? (originalEntry.czasPracySekundy || 0) : 0);
+
+      // aktualizacja istniejącego wpisu — datę i czas pracy można teraz poprawić
       await updateDoc(
         doc(db, PROJECTS_COLLECTION, activeProjectId, ENTRIES_SUBCOLLECTION, editingEntryId),
-        fields
+        {
+          ...fields,
+          czasPracySekundy,
+          utworzono: combineDateAndTimeOfDay(selectedDateStr, originalDate)
+        }
       );
     } else {
+      const isToday = selectedDateStr === todayForInput();
+      const czasPracySekundy = manualSeconds !== null ? manualSeconds : timerSeconds;
+      // domyślny przypadek (dzisiejsza data, brak ręcznego czasu) zachowuje się
+      // dokładnie jak wcześniej: serverTimestamp() + czas ze stopera
+      const utworzonoValue = isToday
+        ? serverTimestamp()
+        : combineDateAndTimeOfDay(selectedDateStr, new Date());
+
       await addDoc(
         collection(db, PROJECTS_COLLECTION, activeProjectId, ENTRIES_SUBCOLLECTION),
-        { ...fields, czasPracySekundy: timerSeconds, utworzono: serverTimestamp() }
+        { ...fields, czasPracySekundy, utworzono: utworzonoValue }
       );
     }
 
@@ -870,6 +953,9 @@ entriesListEl.addEventListener("click", async (ev) => {
     el("f-uzasadnienie").value = entry.uzasadnienie || "";
     el("f-nauka").value = entry.nauka || "";
     el("f-nastepny-krok").value = entry.nastepnyKrok || "";
+    const entryDate = (entry.utworzono && entry.utworzono.toDate) ? entry.utworzono.toDate() : new Date();
+    el("f-data").value = formatDateForInput(entryDate);
+    el("f-czas-reczny").value = entry.czasPracySekundy ? formatTime(entry.czasPracySekundy) : "";
     el("f-raw-paste").value = "";
     editingEntryId = id;
     el("entry-form-title").textContent = "Edytuj wpis";
@@ -895,6 +981,7 @@ function entrySection(label, value){
 }
 
 updateTimerDisplay();
+el("f-data").value = todayForInput();
 </script>
 </body>
 </html>
