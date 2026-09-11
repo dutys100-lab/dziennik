@@ -9,7 +9,7 @@
   :root{
     --bg:#ffffff;
     --fg:#111111;
-    --border:#111111;
+    --border:#dcdcdc;
     --muted:#666666;
     --hover:#f2f2f2;
   }
@@ -58,11 +58,11 @@
   .project-item.active{ background:var(--fg); color:var(--bg); }
   .status-dot{
     width:8px;height:8px;border-radius:50%;
-    border:1px solid var(--border);
+    border:1px solid var(--muted);
     margin-right:6px;
     display:inline-block;
   }
-  .status-w-toku .status-dot{ background:var(--fg); }
+  .status-w-toku .status-dot{ background:var(--fg); border-color:var(--fg); }
   .project-item.active .status-dot{ background:var(--bg); border-color:var(--bg); }
   .status-zawieszony .status-dot{ background:var(--bg); }
   .status-zakonczony .status-dot{ background:var(--muted); }
