@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dziennik Projektów</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ctext%20x%3D%2250%22%20y%3D%2275%22%20font-size%3D%2270%22%20text-anchor%3D%22middle%22%3E%F0%9F%8C%B1%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#ffffff;
+    --fg:#111111;
+    --border:#111111;
+    --muted:#666666;
+    --hover:#f2f2f2;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--fg);
+  }
+  #app{
+    display:flex;
+    min-height:100vh;
+  }
+  /* SIDEBAR */
+  #sidebar{
+    width:280px;
+    min-width:280px;
+    border-right:1px solid var(--border);
+    padding:20px;
+    display:flex;
+    flex-direction:column;
+  }
+  #sidebar h1{
+    font-size:18px;
+    font-weight:700;
+    margin:0 0 20px 0;
+    letter-spacing:0.02em;
+  }
+  #project-list{
+    flex:1;
+    overflow-y:auto;
+  }
+  #archive-btn{ width:100%; margin-top:8px; }
+  .project-item{
+    padding:10px 8px;
+    border:1px solid var(--border);
+    margin-bottom:8px;
+    cursor:pointer;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:14px;
+  }
+  .project-item:hover{ background:var(--hover); }
+  .project-item.active{ background:var(--fg); color:var(--bg); }
+  .status-dot{
+    width:8px;height:8px;border-radius:50%;
+    border:1px solid var(--border);
+    margin-right:6px;
+    display:inline-block;
+  }
+  .status-w-toku .status-dot{ background:var(--fg); }
+  .project-item.active .status-dot{ background:var(--bg); border-color:var(--bg); }
+  .status-zawieszony .status-dot{ background:var(--bg); }
+  .status-zakonczony .status-dot{ background:var(--muted); }
+  .project-name-row{ display:flex; align-items:center; overflow:hidden; }
+  .project-name-text{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  button, .btn{
+    font-family:inherit;
+    background:var(--bg);
+    color:var(--fg);
+    border:1px solid var(--border);
+    padding:8px 12px;
+    cursor:pointer;
+    font-size:13px;
+  }
+  button:hover{ background:var(--hover); }
+  button:disabled{ color:var(--muted); border-color:var(--muted); cursor:not-allowed; background:var(--bg); }
+  button.primary{ background:var(--fg); color:var(--bg); }
+  button.primary:hover{ opacity:0.85; }
+
+  #new-project-btn{ width:100%; margin-top:4px; }
+
+  /* MAIN */
+  #main{
+    flex:1;
+    padding:28px 40px;
+    max-width:820px;
+  }
+  .empty-state{ color:var(--muted); margin-top:60px; text-align:center; }
+
+  #project-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    border-bottom:1px solid var(--border);
+    padding-bottom:16px;
+    margin-bottom:20px;
+    flex-wrap:wrap;
+    gap:12px;
+  }
+  #project-title{
+    font-size:22px;
+    font-weight:700;
+    margin:0 0 6px 0;
+  }
+  #project-header select{
+    font-family:inherit;
+    border:1px solid var(--border);
+    background:var(--bg);
+    color:var(--fg);
+    padding:6px 8px;
+    font-size:13px;
+  }
+  .header-controls{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+
+  /* TIMER */
+  #timer-box{
+    border:1px solid var(--border);
+    padding:14px 16px;
+    margin-bottom:20px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:10px;
+  }
+  #timer-display{
+    font-size:22px;
+    font-weight:700;
+    font-variant-numeric:tabular-nums;
+  }
+  #timer-label{ font-size:12px; color:var(--muted); }
+
+  /* ENTRY FORM */
+  #entry-form{
+    border:1px solid var(--border);
+    padding:18px;
+    margin-bottom:24px;
+    display:none;
+  }
+  #entry-form.open{ display:block; }
+  #entry-form h3{ margin-top:0; font-size:15px; }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.03em; }
+  .field textarea{
+    width:100%;
+    font-family:inherit;
+    font-size:14px;
+    border:1px solid var(--border);
+    padding:8px;
+    resize:vertical;
+    min-height:56px;
+    background:var(--bg);
+    color:var(--fg);
+  }
+  .form-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:10px; }
+
+  /* ENTRIES LIST */
+  #entries-list{ display:flex; flex-direction:column; gap:14px; }
+  .entry-card{
+    border:1px solid var(--border);
+    padding:14px 16px;
+  }
+  .entry-meta{
+    display:flex;
+    justify-content:space-between;
+    font-size:12px;
+    color:var(--muted);
+    margin-bottom:10px;
+    border-bottom:1px solid var(--border);
+    padding-bottom:8px;
+  }
+  .entry-section{ margin-bottom:8px; }
+  .entry-section .label{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted); }
+  .entry-section .value{ font-size:14px; white-space:pre-wrap; margin-top:2px; }
+  .entry-section .value:empty::after{ content:"—"; color:var(--muted); }
+
+  #export-note{
+    font-size:12px;
+    color:var(--muted);
+    margin-top:24px;
+  }
+
+  #sync-status{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:12px;
+  }
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.3);
+    display:none; align-items:center; justify-content:center;
+    z-index:10;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal-box{
+    background:var(--bg); border:1px solid var(--border);
+    padding:20px; width:320px;
+  }
+  .modal-box h3{ margin-top:0; font-size:15px; }
+  .modal-box input{
+    width:100%; font-family:inherit; font-size:14px;
+    border:1px solid var(--border); padding:8px; margin-bottom:14px;
+    background:var(--bg); color:var(--fg);
+  }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:8px; }
+
+  /* ENTRIES TOOLBAR */
+  #entries-toolbar{ display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  #entries-toolbar input, #entries-toolbar select{
+    font-family:inherit; font-size:13px; border:1px solid var(--border);
+    padding:6px 8px; background:var(--bg); color:var(--fg);
+  }
+  #entry-search{ flex:1; min-width:160px; }
+  .entry-actions{ display:flex; gap:8px; margin-top:10px; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="sidebar">
+    <h1>Dziennik Projektów</h1>
+    <div id="project-list"></div>
+    <button id="new-project-btn">+ Nowy projekt</button>
+    <button id="archive-btn">Archiwum (zakończone)</button>
+    <div id="sync-status">Łączenie z Firebase…</div>
+  </div>
+
+  <div id="main">
+    <div id="empty-state" class="empty-state">Wybierz projekt z listy albo utwórz nowy.</div>
+
+    <div id="project-view" style="display:none;">
+      <div id="project-header">
+        <div>
+          <h2 id="project-title"></h2>
+          <select id="status-select">
+            <option value="w toku">w toku</option>
+            <option value="zawieszony">zawieszony</option>
+            <option value="zakończony">zakończony</option>
+          </select>
+          <div id="total-time-display" style="font-size:12px; color:var(--muted); margin-top:8px;">Łączny czas pracy: 00:00:00</div>
+        </div>
+        <div class="header-controls">
+          <button id="toggle-entry-form-btn" class="primary">+ Nowy wpis</button>
+        </div>
+      </div>
+
+      <div id="timer-box">
+        <div>
+          <div id="timer-label">Czas pracy nad bieżącym wpisem</div>
+          <div id="timer-display">00:00:00</div>
+        </div>
+        <div>
+          <button id="timer-toggle-btn">Start</button>
+          <button id="timer-reset-btn">Zeruj</button>
+        </div>
+      </div>
+
+      <div id="entry-form">
+        <h3 id="entry-form-title">Nowy wpis</h3>
+
+        <div class="field">
+          <label>Źródło pracy</label>
+          <select id="f-source">
+            <option value="Claude">Claude</option>
+            <option value="GPT">GPT</option>
+            <option value="Perplexity">Perplexity</option>
+            <option value="Gemini">Gemini</option>
+            <option value="ręcznie">ręcznie</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Wklej gotowy raport (opcjonalnie)</label>
+          <textarea id="f-raw-paste" placeholder="CEL: ...&#10;DZIAŁANIA: ...&#10;PROBLEMY: ...&#10;DECYZJE: ...&#10;UZASADNIENIE: ...&#10;NAUKA: ...&#10;NASTĘPNY KROK: ..." style="min-height:90px;"></textarea>
+          <div style="margin-top:6px;"><button id="parse-raport-btn">Rozdziel na pola ↓</button></div>
+        </div>
+
+        <hr style="border:none;border-top:1px solid var(--border); margin:16px 0;">
+
+        <div class="field"><label>Cel</label><textarea id="f-cel"></textarea></div>
+        <div class="field"><label>Wykonane działania</label><textarea id="f-dzialania"></textarea></div>
+        <div class="field"><label>Problemy</label><textarea id="f-problemy"></textarea></div>
+        <div class="field"><label>Decyzje</label><textarea id="f-decyzje"></textarea></div>
+        <div class="field"><label>Uzasadnienie decyzji</label><textarea id="f-uzasadnienie"></textarea></div>
+        <div class="field"><label>Czego się nauczyłam</label><textarea id="f-nauka"></textarea></div>
+        <div class="field"><label>Następny krok</label><textarea id="f-nastepny-krok"></textarea></div>
+        <div class="form-actions">
+          <button id="cancel-entry-btn">Anuluj</button>
+          <button id="save-entry-btn" class="primary">Zapisz wpis</button>
+        </div>
+      </div>
+
+      <div id="entries-toolbar">
+        <input type="text" id="entry-search" placeholder="Szukaj w wpisach…">
+        <select id="entry-source-filter">
+          <option value="wszystkie">wszystkie źródła</option>
+          <option value="Claude">Claude</option>
+          <option value="GPT">GPT</option>
+          <option value="Perplexity">Perplexity</option>
+          <option value="Gemini">Gemini</option>
+          <option value="ręcznie">ręcznie</option>
+        </select>
+      </div>
+
+      <div id="entries-list"></div>
+
+      <div id="export-note">Eksport do raportu dla klienta — wkrótce.</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="new-project-modal">
+  <div class="modal-box">
+    <h3>Nowy projekt</h3>
+    <input type="text" id="new-project-name" placeholder="Nazwa projektu" maxlength="120">
+    <div class="modal-actions">
+      <button id="new-project-cancel">Anuluj</button>
+      <button id="new-project-confirm" class="primary">Utwórz</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="archive-modal">
+  <div class="modal-box" style="width:360px;">
+    <h3>Zakończone projekty</h3>
+    <input type="text" id="archive-search" placeholder="Szukaj po nazwie…">
+    <div id="archive-list" style="max-height:280px; overflow-y:auto; margin-bottom:14px;"></div>
+    <div class="modal-actions">
+      <button id="archive-close-btn">Zamknij</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
+  query, orderBy, onSnapshot, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// ---------------------------------------------------------------
+// KONFIGURACJA FIREBASE
+// Osobny projekt Firebase (dziennik-projektow), niezależny od planera.
+// Firestore na razie w trybie testowym — reguły bezpieczeństwa do
+// ustawienia w kolejnym kroku.
+// ---------------------------------------------------------------
+const firebaseConfig = {
+  apiKey: "AIzaSyD7O66ehOCAHLmXAU2Qpo6zxPduaXbtyzA",
+  authDomain: "dziennik-projektow.firebaseapp.com",
+  projectId: "dziennik-projektow",
+  storageBucket: "dziennik-projektow.firebasestorage.app",
+  messagingSenderId: "998581766282",
+  appId: "1:998581766282:web:cad866632238ffc84fc573"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const PROJECTS_COLLECTION = "projekty";
+const ENTRIES_SUBCOLLECTION = "wpisy";
+
+// ---------------------------------------------------------------
+// STAN
+// ---------------------------------------------------------------
+let projects = [];          // [{id, nazwa, status, utworzono}]
+let activeProjectId = null;
+let entries = [];           // wpisy aktywnego projektu
+let unsubEntries = null;
+
+let timerSeconds = 0;
+let timerRunning = false;
+let timerIntervalHandle = null;
+
+let editingEntryId = null; // null = nowy wpis, w przeciwnym razie edycja istniejącego
+
+// ---------------------------------------------------------------
+// ELEMENTY DOM
+// ---------------------------------------------------------------
+const el = (id) => document.getElementById(id);
+const projectListEl = el("project-list");
+const emptyStateEl = el("empty-state");
+const projectViewEl = el("project-view");
+const projectTitleEl = el("project-title");
+const statusSelectEl = el("status-select");
+const entriesListEl = el("entries-list");
+const entryFormEl = el("entry-form");
+const timerDisplayEl = el("timer-display");
+const timerToggleBtn = el("timer-toggle-btn");
+const syncStatusEl = el("sync-status");
+
+// ---------------------------------------------------------------
+// FIRESTORE: PROJEKTY (nasłuch na żywo)
+// ---------------------------------------------------------------
+const projectsQuery = query(collection(db, PROJECTS_COLLECTION), orderBy("utworzono", "desc"));
+
+onSnapshot(projectsQuery, (snap) => {
+  projects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  syncStatusEl.textContent = "Zsynchronizowano";
+  renderProjectList();
+  if (activeProjectId) {
+    const stillExists = projects.find(p => p.id === activeProjectId);
+    if (stillExists) {
+      projectTitleEl.textContent = stillExists.nazwa;
+      statusSelectEl.value = stillExists.status;
+    }
+  }
+}, (err) => {
+  syncStatusEl.textContent = "Błąd połączenia z Firebase";
+  console.error(err);
+});
+
+function renderProjectList(){
+  projectListEl.innerHTML = "";
+  const visible = projects
+    .filter(p => p.status !== "zakończony")
+    .sort((a, b) => {
+      const rank = (s) => s === "w toku" ? 0 : 1; // zawieszony = 1
+      return rank(a.status) - rank(b.status);
+    });
+  if (visible.length === 0){
+    const p = document.createElement("div");
+    p.style.color = "var(--muted)";
+    p.style.fontSize = "13px";
+    p.textContent = "Brak aktywnych projektów.";
+    projectListEl.appendChild(p);
+    return;
+  }
+  visible.forEach(p => {
+    const item = document.createElement("div");
+    const statusClass = "status-" + p.status.replace(/\s+/g,"-").replace("ę","e").replace("ł","l").replace("ń","n").replace("ż","z").replace("ą","a").replace("ó","o");
+    item.className = "project-item " + statusClass + (p.id === activeProjectId ? " active" : "");
+    item.innerHTML = `
+      <span class="project-name-row">
+        <span class="status-dot"></span>
+        <span class="project-name-text">${escapeHtml(p.nazwa)}</span>
+      </span>
+    `;
+    item.addEventListener("click", () => selectProject(p.id));
+    projectListEl.appendChild(item);
+  });
+}
+
+function escapeHtml(str){
+  const d = document.createElement("div");
+  d.textContent = str || "";
+  return d.innerHTML;
+}
+
+// ---------------------------------------------------------------
+// TWORZENIE NOWEGO PROJEKTU
+// ---------------------------------------------------------------
+el("new-project-btn").addEventListener("click", () => {
+  el("new-project-name").value = "";
+  el("new-project-modal").classList.add("open");
+  el("new-project-name").focus();
+});
+el("new-project-cancel").addEventListener("click", () => {
+  el("new-project-modal").classList.remove("open");
+});
+el("new-project-confirm").addEventListener("click", async () => {
+  const name = el("new-project-name").value.trim();
+  if (!name) return;
+  const docRef = await addDoc(collection(db, PROJECTS_COLLECTION), {
+    nazwa: name,
+    status: "w toku",
+    utworzono: serverTimestamp()
+  });
+  el("new-project-modal").classList.remove("open");
+  selectProject(docRef.id);
+});
+
+// ---------------------------------------------------------------
+// ARCHIWUM ZAKOŃCZONYCH PROJEKTÓW
+// ---------------------------------------------------------------
+el("archive-btn").addEventListener("click", () => {
+  el("archive-search").value = "";
+  renderArchiveList();
+  el("archive-modal").classList.add("open");
+});
+el("archive-close-btn").addEventListener("click", () => {
+  el("archive-modal").classList.remove("open");
+});
+el("archive-search").addEventListener("input", renderArchiveList);
+
+function renderArchiveList(){
+  const term = el("archive-search").value.trim().toLowerCase();
+  const archived = projects.filter(p =>
+    p.status === "zakończony" && p.nazwa.toLowerCase().includes(term)
+  );
+  const container = el("archive-list");
+  container.innerHTML = "";
+  if (archived.length === 0){
+    const p = document.createElement("div");
+    p.style.color = "var(--muted)";
+    p.style.fontSize = "13px";
+    p.textContent = "Brak zakończonych projektów.";
+    container.appendChild(p);
+    return;
+  }
+  archived.forEach(p => {
+    const item = document.createElement("div");
+    item.className = "project-item status-zakonczony";
+    item.style.marginBottom = "8px";
+    item.innerHTML = `
+      <span class="project-name-row">
+        <span class="status-dot"></span>
+        <span class="project-name-text">${escapeHtml(p.nazwa)}</span>
+      </span>
+    `;
+    item.addEventListener("click", () => {
+      el("archive-modal").classList.remove("open");
+      selectProject(p.id);
+    });
+    container.appendChild(item);
+  });
+}
+
+// ---------------------------------------------------------------
+// WYBÓR PROJEKTU
+// ---------------------------------------------------------------
+function selectProject(id){
+  activeProjectId = id;
+  const p = projects.find(p => p.id === id);
+  if (!p) return;
+
+  emptyStateEl.style.display = "none";
+  projectViewEl.style.display = "block";
+  projectTitleEl.textContent = p.nazwa;
+  statusSelectEl.value = p.status;
+
+  entryFormEl.classList.remove("open");
+  clearForm();
+  resetTimer();
+
+  el("entry-search").value = "";
+  el("entry-source-filter").value = "wszystkie";
+
+  renderProjectList();
+
+  if (unsubEntries) unsubEntries();
+  const entriesQuery = query(
+    collection(db, PROJECTS_COLLECTION, id, ENTRIES_SUBCOLLECTION),
+    orderBy("utworzono", "desc")
+  );
+  unsubEntries = onSnapshot(entriesQuery, (snap) => {
+    entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderEntries();
+  });
+}
+
+statusSelectEl.addEventListener("change", async () => {
+  if (!activeProjectId) return;
+  await updateDoc(doc(db, PROJECTS_COLLECTION, activeProjectId), {
+    status: statusSelectEl.value
+  });
+});
+
+// ---------------------------------------------------------------
+// TIMER
+// ---------------------------------------------------------------
+function formatTime(totalSeconds){
+  const h = String(Math.floor(totalSeconds / 3600)).padStart(2,"0");
+  const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2,"0");
+  const s = String(totalSeconds % 60).padStart(2,"0");
+  return `${h}:${m}:${s}`;
+}
+
+function updateTimerDisplay(){
+  timerDisplayEl.textContent = formatTime(timerSeconds);
+}
+
+timerToggleBtn.addEventListener("click", () => {
+  if (timerRunning){
+    timerRunning = false;
+    clearInterval(timerIntervalHandle);
+    timerToggleBtn.textContent = "Start";
+  } else {
+    timerRunning = true;
+    timerIntervalHandle = setInterval(() => {
+      timerSeconds += 1;
+      updateTimerDisplay();
+    }, 1000);
+    timerToggleBtn.textContent = "Stop";
+  }
+});
+
+el("timer-reset-btn").addEventListener("click", resetTimer);
+
+function resetTimer(){
+  timerRunning = false;
+  clearInterval(timerIntervalHandle);
+  timerSeconds = 0;
+  timerToggleBtn.textContent = "Start";
+  updateTimerDisplay();
+}
+
+// ---------------------------------------------------------------
+// FORMULARZ WPISU
+// ---------------------------------------------------------------
+el("toggle-entry-form-btn").addEventListener("click", () => {
+  entryFormEl.classList.toggle("open");
+});
+el("cancel-entry-btn").addEventListener("click", () => {
+  entryFormEl.classList.remove("open");
+  clearForm();
+});
+
+function clearForm(){
+  ["f-cel","f-dzialania","f-problemy","f-decyzje","f-uzasadnienie","f-nauka","f-nastepny-krok","f-raw-paste"]
+    .forEach(id => el(id).value = "");
+  el("f-source").value = "Claude";
+  editingEntryId = null;
+  el("entry-form-title").textContent = "Nowy wpis";
+  el("save-entry-btn").textContent = "Zapisz wpis";
+}
+
+// ---------------------------------------------------------------
+// PARSOWANIE WKLEJONEGO RAPORTU
+// ---------------------------------------------------------------
+const RAPORT_LABELS = [
+  { key: "f-cel",           regex: /^\s*cel\s*:/i },
+  { key: "f-dzialania",     regex: /^\s*(wykonane\s+)?dzia[łl]ania\s*:/i },
+  { key: "f-problemy",      regex: /^\s*problemy\s*:/i },
+  { key: "f-decyzje",       regex: /^\s*decyzje\s*:/i },
+  { key: "f-uzasadnienie",  regex: /^\s*uzasadnienie(\s+decyzji)?\s*:/i },
+  { key: "f-nauka",         regex: /^\s*(czego\s+si[eę]\s+nauczy[łl]am|nauka)\s*:/i },
+  { key: "f-nastepny-krok", regex: /^\s*nast[eę]pny\s+krok\s*:/i }
+];
+
+function parseRaportText(text){
+  const lines = text.split(/\r?\n/);
+  const result = {};
+  let currentKey = null;
+  for (const rawLine of lines){
+    let matched = false;
+    for (const { key, regex } of RAPORT_LABELS){
+      const m = rawLine.match(regex);
+      if (m){
+        matched = true;
+        currentKey = key;
+        result[key] = rawLine.slice(m[0].length).trim();
+        break;
+      }
+    }
+    if (!matched && currentKey){
+      result[currentKey] = (result[currentKey] ? result[currentKey] + "\n" : "") + rawLine;
+    }
+  }
+  Object.keys(result).forEach(k => result[k] = result[k].trim());
+  return result;
+}
+
+el("parse-raport-btn").addEventListener("click", () => {
+  const raw = el("f-raw-paste").value;
+  if (!raw.trim()){
+    alert("Wklej najpierw treść raportu.");
+    return;
+  }
+  const parsed = parseRaportText(raw);
+  RAPORT_LABELS.forEach(({ key }) => {
+    if (parsed[key]) el(key).value = parsed[key];
+  });
+});
+
+el("save-entry-btn").addEventListener("click", async () => {
+  if (!activeProjectId) return;
+
+  const fields = {
+    zrodlo: el("f-source").value,
+    cel: el("f-cel").value.trim(),
+    dzialania: el("f-dzialania").value.trim(),
+    problemy: el("f-problemy").value.trim(),
+    decyzje: el("f-decyzje").value.trim(),
+    uzasadnienie: el("f-uzasadnienie").value.trim(),
+    nauka: el("f-nauka").value.trim(),
+    nastepnyKrok: el("f-nastepny-krok").value.trim()
+  };
+
+  const hasContent = ["cel","dzialania","problemy","decyzje","uzasadnienie","nauka","nastepnyKrok"]
+    .some(k => fields[k] && fields[k].length > 0);
+  if (!hasContent){
+    alert("Wpis jest pusty — uzupełnij przynajmniej jedno pole.");
+    return;
+  }
+
+  if (editingEntryId){
+    // aktualizacja istniejącego wpisu — data i czas pracy zostają jak w oryginale
+    await updateDoc(
+      doc(db, PROJECTS_COLLECTION, activeProjectId, ENTRIES_SUBCOLLECTION, editingEntryId),
+      fields
+    );
+  } else {
+    await addDoc(
+      collection(db, PROJECTS_COLLECTION, activeProjectId, ENTRIES_SUBCOLLECTION),
+      { ...fields, czasPracySekundy: timerSeconds, utworzono: serverTimestamp() }
+    );
+  }
+
+  entryFormEl.classList.remove("open");
+  clearForm();
+  resetTimer();
+});
+
+// ---------------------------------------------------------------
+// SKRÓT KLAWISZOWY: Ctrl+Enter zapisuje wpis
+// ---------------------------------------------------------------
+document.addEventListener("keydown", (ev) => {
+  if (ev.ctrlKey && ev.key === "Enter" && entryFormEl.classList.contains("open")){
+    ev.preventDefault();
+    el("save-entry-btn").click();
+  }
+});
+
+// ---------------------------------------------------------------
+// LISTA WPISÓW
+// ---------------------------------------------------------------
+el("entry-search").addEventListener("input", renderEntries);
+el("entry-source-filter").addEventListener("change", renderEntries);
+
+function getFilteredEntries(){
+  const term = el("entry-search").value.trim().toLowerCase();
+  const source = el("entry-source-filter").value;
+  return entries.filter(e => {
+    if (source !== "wszystkie" && e.zrodlo !== source) return false;
+    if (!term) return true;
+    const haystack = [e.cel, e.dzialania, e.problemy, e.decyzje, e.uzasadnienie, e.nauka, e.nastepnyKrok]
+      .join(" ").toLowerCase();
+    return haystack.includes(term);
+  });
+}
+
+function renderEntries(){
+  const totalSeconds = entries.reduce((sum, e) => sum + (e.czasPracySekundy || 0), 0);
+  el("total-time-display").textContent = "Łączny czas pracy: " + formatTime(totalSeconds);
+
+  const filtered = getFilteredEntries();
+
+  entriesListEl.innerHTML = "";
+  if (entries.length === 0){
+    const p = document.createElement("div");
+    p.style.color = "var(--muted)";
+    p.style.fontSize = "13px";
+    p.textContent = "Brak wpisów w tym projekcie.";
+    entriesListEl.appendChild(p);
+    return;
+  }
+  if (filtered.length === 0){
+    const p = document.createElement("div");
+    p.style.color = "var(--muted)";
+    p.style.fontSize = "13px";
+    p.textContent = "Brak wpisów pasujących do filtrów.";
+    entriesListEl.appendChild(p);
+    return;
+  }
+  filtered.forEach(e => {
+    const card = document.createElement("div");
+    card.className = "entry-card";
+
+    const dateStr = e.utworzono && e.utworzono.toDate
+      ? e.utworzono.toDate().toLocaleString("pl-PL")
+      : "zapisywanie…";
+    const czasStr = e.czasPracySekundy ? formatTime(e.czasPracySekundy) : "00:00:00";
+
+    card.innerHTML = `
+      <div class="entry-meta">
+        <span>${dateStr}${e.zrodlo ? " · " + escapeHtml(e.zrodlo) : ""}</span>
+        <span>Czas pracy: ${czasStr}</span>
+      </div>
+      ${entrySection("Cel", e.cel)}
+      ${entrySection("Wykonane działania", e.dzialania)}
+      ${entrySection("Problemy", e.problemy)}
+      ${entrySection("Decyzje", e.decyzje)}
+      ${entrySection("Uzasadnienie decyzji", e.uzasadnienie)}
+      ${entrySection("Czego się nauczyłam", e.nauka)}
+      ${entrySection("Następny krok", e.nastepnyKrok)}
+      <div class="entry-actions">
+        <button class="edit-entry-btn" data-id="${e.id}">Edytuj</button>
+        <button class="delete-entry-btn" data-id="${e.id}">Usuń</button>
+      </div>
+    `;
+    entriesListEl.appendChild(card);
+  });
+}
+
+entriesListEl.addEventListener("click", async (ev) => {
+  const editBtn = ev.target.closest(".edit-entry-btn");
+  const deleteBtn = ev.target.closest(".delete-entry-btn");
+
+  if (editBtn){
+    const id = editBtn.dataset.id;
+    const entry = entries.find(e => e.id === id);
+    if (!entry) return;
+    el("f-source").value = entry.zrodlo || "Claude";
+    el("f-cel").value = entry.cel || "";
+    el("f-dzialania").value = entry.dzialania || "";
+    el("f-problemy").value = entry.problemy || "";
+    el("f-decyzje").value = entry.decyzje || "";
+    el("f-uzasadnienie").value = entry.uzasadnienie || "";
+    el("f-nauka").value = entry.nauka || "";
+    el("f-nastepny-krok").value = entry.nastepnyKrok || "";
+    el("f-raw-paste").value = "";
+    editingEntryId = id;
+    el("entry-form-title").textContent = "Edytuj wpis";
+    el("save-entry-btn").textContent = "Zapisz zmiany";
+    entryFormEl.classList.add("open");
+    entryFormEl.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  if (deleteBtn){
+    const id = deleteBtn.dataset.id;
+    if (!confirm("Usunąć ten wpis? Tej operacji nie da się cofnąć.")) return;
+    await deleteDoc(doc(db, PROJECTS_COLLECTION, activeProjectId, ENTRIES_SUBCOLLECTION, id));
+  }
+});
+
+function entrySection(label, value){
+  return `
+    <div class="entry-section">
+      <div class="label">${label}</div>
+      <div class="value">${escapeHtml(value)}</div>
+    </div>
+  `;
+}
+
+updateTimerDisplay();
+</script>
+</body>
+</html>
