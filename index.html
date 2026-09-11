@@ -246,6 +246,7 @@
           <div id="total-time-display" style="font-size:12px; color:var(--muted); margin-top:8px;">Łączny czas pracy: 00:00:00</div>
         </div>
         <div class="header-controls">
+          <button id="delete-project-btn">Usuń projekt</button>
           <button id="toggle-entry-form-btn" class="primary">+ Nowy wpis</button>
         </div>
       </div>
@@ -559,6 +560,33 @@ statusSelectEl.addEventListener("change", async () => {
   await updateDoc(doc(db, PROJECTS_COLLECTION, activeProjectId), {
     status: statusSelectEl.value
   });
+});
+
+// ---------------------------------------------------------------
+// USUWANIE CAŁEGO PROJEKTU (wraz z wpisami)
+// ---------------------------------------------------------------
+el("delete-project-btn").addEventListener("click", async () => {
+  if (!activeProjectId) return;
+  const p = projects.find(pr => pr.id === activeProjectId);
+  const name = p ? p.nazwa : "ten projekt";
+  const confirmed = confirm(
+    `Usunąć projekt "${name}" wraz ze wszystkimi wpisami (${entries.length})? Tej operacji nie da się cofnąć.`
+  );
+  if (!confirmed) return;
+
+  await Promise.all(
+    entries.map(e =>
+      deleteDoc(doc(db, PROJECTS_COLLECTION, activeProjectId, ENTRIES_SUBCOLLECTION, e.id))
+    )
+  );
+  await deleteDoc(doc(db, PROJECTS_COLLECTION, activeProjectId));
+
+  if (unsubEntries){ unsubEntries(); unsubEntries = null; }
+  activeProjectId = null;
+  entries = [];
+  projectViewEl.style.display = "none";
+  emptyStateEl.style.display = "block";
+  renderProjectList();
 });
 
 // ---------------------------------------------------------------
