@@ -180,10 +180,22 @@
     justify-content:space-between;
     font-size:12px;
     color:var(--muted);
+    cursor:pointer;
+    user-select:none;
+  }
+  .entry-card.expanded .entry-meta{
     margin-bottom:10px;
     border-bottom:1px solid var(--border);
     padding-bottom:8px;
   }
+  .entry-toggle-icon{
+    display:inline-block;
+    margin-right:4px;
+    transition:transform 0.15s ease;
+  }
+  .entry-card.expanded .entry-toggle-icon{ transform:rotate(90deg); }
+  .entry-body{ display:none; }
+  .entry-card.expanded .entry-body{ display:block; }
   .entry-section{ margin-bottom:8px; }
   .entry-section .label{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted); }
   .entry-section .value{ font-size:14px; white-space:pre-wrap; margin-top:2px; }
@@ -397,11 +409,13 @@ let activeProjectId = null;
 let entries = [];           // wpisy aktywnego projektu
 let unsubEntries = null;
 
-let timerSeconds = 0;
+let timerAccumulated = 0;   // sekundy zebrane przed bieżącym uruchomieniem
 let timerRunning = false;
+let timerStartEpoch = null; // moment (ms) uruchomienia bieżącego odcinka, albo null
 let timerIntervalHandle = null;
 
 let editingEntryId = null; // null = nowy wpis, w przeciwnym razie edycja istniejącego
+let expandedEntryIds = new Set(); // które wpisy są rozwinięte na liście
 
 // ---------------------------------------------------------------
 // ELEMENTY DOM
@@ -587,7 +601,9 @@ function selectProject(id){
 
   entryFormEl.classList.remove("open");
   clearForm();
-  resetTimer();
+  loadTimerState(id);
+  updateTimerDisplay();
+  expandedEntryIds.clear();
 
   el("entry-search").value = "";
   el("entry-source-filter").value = "wszystkie";
@@ -679,31 +695,71 @@ function parseManualTime(str){
 }
 
 function updateTimerDisplay(){
-  timerDisplayEl.textContent = formatTime(timerSeconds);
+  timerDisplayEl.textContent = formatTime(currentTimerSeconds());
+  timerToggleBtn.textContent = timerRunning ? "Stop" : "Start";
+}
+
+// Aktualny czas licząc od znacznika startu (a nie od tykania interwału) —
+// dzięki temu wynik jest poprawny nawet jeśli karta była uśpiona przez chwilę.
+function currentTimerSeconds(){
+  if (!timerRunning || timerStartEpoch === null) return timerAccumulated;
+  return timerAccumulated + Math.floor((Date.now() - timerStartEpoch) / 1000);
+}
+
+function timerStorageKey(projectId){
+  return "dziennik_timer_" + projectId;
+}
+
+// Zapisuje stan stopera w przeglądarce, żeby przetrwał uśpienie/odświeżenie karty
+function saveTimerState(){
+  if (!activeProjectId) return;
+  try {
+    localStorage.setItem(timerStorageKey(activeProjectId), JSON.stringify({
+      accumulated: timerAccumulated,
+      running: timerRunning,
+      startEpoch: timerStartEpoch
+    }));
+  } catch(e){
+    console.warn("Nie udało się zapisać stanu stopera lokalnie:", e);
+  }
+}
+
+function loadTimerState(projectId){
+  try {
+    const raw = localStorage.getItem(timerStorageKey(projectId));
+    if (!raw){
+      timerAccumulated = 0; timerRunning = false; timerStartEpoch = null;
+      return;
+    }
+    const st = JSON.parse(raw);
+    timerAccumulated = Number(st.accumulated) || 0;
+    timerRunning = !!st.running;
+    timerStartEpoch = timerRunning ? (Number(st.startEpoch) || Date.now()) : null;
+  } catch(e){
+    timerAccumulated = 0; timerRunning = false; timerStartEpoch = null;
+  }
 }
 
 timerToggleBtn.addEventListener("click", () => {
   if (timerRunning){
+    timerAccumulated = currentTimerSeconds();
     timerRunning = false;
-    clearInterval(timerIntervalHandle);
-    timerToggleBtn.textContent = "Start";
+    timerStartEpoch = null;
   } else {
     timerRunning = true;
-    timerIntervalHandle = setInterval(() => {
-      timerSeconds += 1;
-      updateTimerDisplay();
-    }, 1000);
-    timerToggleBtn.textContent = "Stop";
+    timerStartEpoch = Date.now();
   }
+  saveTimerState();
+  updateTimerDisplay();
 });
 
 el("timer-reset-btn").addEventListener("click", resetTimer);
 
 function resetTimer(){
   timerRunning = false;
-  clearInterval(timerIntervalHandle);
-  timerSeconds = 0;
-  timerToggleBtn.textContent = "Start";
+  timerAccumulated = 0;
+  timerStartEpoch = null;
+  saveTimerState();
   updateTimerDisplay();
 }
 
@@ -835,7 +891,7 @@ el("save-entry-btn").addEventListener("click", async () => {
       );
     } else {
       const isToday = selectedDateStr === todayForInput();
-      const czasPracySekundy = manualSeconds !== null ? manualSeconds : timerSeconds;
+      const czasPracySekundy = manualSeconds !== null ? manualSeconds : currentTimerSeconds();
       // domyślny przypadek (dzisiejsza data, brak ręcznego czasu) zachowuje się
       // dokładnie jak wcześniej: serverTimestamp() + czas ze stopera
       const utworzonoValue = isToday
@@ -910,6 +966,8 @@ function renderEntries(){
   filtered.forEach(e => {
     const card = document.createElement("div");
     card.className = "entry-card";
+    card.dataset.entryId = e.id;
+    if (expandedEntryIds.has(e.id)) card.classList.add("expanded");
 
     const dateStr = e.utworzono && e.utworzono.toDate
       ? e.utworzono.toDate().toLocaleString("pl-PL")
@@ -918,19 +976,21 @@ function renderEntries(){
 
     card.innerHTML = `
       <div class="entry-meta">
-        <span>${dateStr}${e.zrodlo ? " · " + escapeHtml(e.zrodlo) : ""}</span>
+        <span><span class="entry-toggle-icon">▸</span>${dateStr}${e.zrodlo ? " · " + escapeHtml(e.zrodlo) : ""}</span>
         <span>Czas pracy: ${czasStr}</span>
       </div>
-      ${entrySection("Cel", e.cel)}
-      ${entrySection("Wykonane działania", e.dzialania)}
-      ${entrySection("Problemy", e.problemy)}
-      ${entrySection("Decyzje", e.decyzje)}
-      ${entrySection("Uzasadnienie decyzji", e.uzasadnienie)}
-      ${entrySection("Czego się nauczyłam", e.nauka)}
-      ${entrySection("Następny krok", e.nastepnyKrok)}
-      <div class="entry-actions">
-        <button class="edit-entry-btn" data-id="${e.id}">Edytuj</button>
-        <button class="delete-entry-btn" data-id="${e.id}">Usuń</button>
+      <div class="entry-body">
+        ${entrySection("Cel", e.cel)}
+        ${entrySection("Wykonane działania", e.dzialania)}
+        ${entrySection("Problemy", e.problemy)}
+        ${entrySection("Decyzje", e.decyzje)}
+        ${entrySection("Uzasadnienie decyzji", e.uzasadnienie)}
+        ${entrySection("Czego się nauczyłam", e.nauka)}
+        ${entrySection("Następny krok", e.nastepnyKrok)}
+        <div class="entry-actions">
+          <button class="edit-entry-btn" data-id="${e.id}">Edytuj</button>
+          <button class="delete-entry-btn" data-id="${e.id}">Usuń</button>
+        </div>
       </div>
     `;
     entriesListEl.appendChild(card);
@@ -940,6 +1000,16 @@ function renderEntries(){
 entriesListEl.addEventListener("click", async (ev) => {
   const editBtn = ev.target.closest(".edit-entry-btn");
   const deleteBtn = ev.target.closest(".delete-entry-btn");
+  const metaRow = ev.target.closest(".entry-meta");
+
+  if (metaRow && !editBtn && !deleteBtn){
+    const card = metaRow.closest(".entry-card");
+    const id = card.dataset.entryId;
+    if (expandedEntryIds.has(id)) expandedEntryIds.delete(id);
+    else expandedEntryIds.add(id);
+    card.classList.toggle("expanded");
+    return;
+  }
 
   if (editBtn){
     const id = editBtn.dataset.id;
@@ -981,6 +1051,7 @@ function entrySection(label, value){
 }
 
 updateTimerDisplay();
+setInterval(updateTimerDisplay, 1000);
 el("f-data").value = todayForInput();
 </script>
 </body>
